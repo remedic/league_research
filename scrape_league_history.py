@@ -6,6 +6,7 @@ from contextlib import closing
 from bs4 import BeautifulSoup
 import re
 import copy
+import pprint
 
 def main():
     run='test'
@@ -15,7 +16,7 @@ def main():
     match_variables = ['Match_Date', 'League', 
             'Team1', 'Team2', 'Court', 
             'Team1_P1', 'Team1_P2', 'Team2_P1', 'Team2_P2',
-            'Win_Team', 'Win_Games', 'Lose_Games', 'Delta_Pct_Games'
+            'Win_Team', 'Win_Games', 'Lose_Games', 'Delta_Pct_Games',
             'Team1_P1_IR', 'Team1_P2_IR', 'Team2_P1_IR', 'Team2_P2_IR', 'Team1_Avg_IR', 'Team2_Avg_IR',
             'Team1_P1_MR', 'Team1_P2_MR', 'Team2_P1_MR', 'Team2_P2_MR', 'Team1_Avg_MR', 'Team2_Avg_MR',
             'Delta_Team_IR', 'Delta_Team_MR']
@@ -181,29 +182,41 @@ def get_matches(url, match_variables):
 
     match_div = html.findAll('div', {'class':'container496'})
     match_html = match_div[0]
-    print(match_div)
     match = dict.fromkeys(match_variables)
     
     match_list = match_html.text.rstrip().split('\n')
     match_list = (x.rstrip() for x in match_list)
     match_list = [x for x in match_list if x]
-   # ['1/11/2020', 'S1', 'Adult 18+4.0', 'McMullen HansenFlorida', 'W', 'Vinoy SparksFlorida', '7-6, 1-6, 1-0', 'Truc Dang (3.82)', 'Match: 3.75', 'Rating: 3.84']
+   
+    #get player name
+    
+    print(re.find(r'*playername*', match_div))
+    
     match['Match_Date'] = match_list[0]
     match['Court'] = match_list[1]
     match['League'] = match_list[2]
 
     if match_list[4]=="W":
         match['Team1'] = match_list[3]
-        match['Team2'] = match_ist[5]
+        match['Team2'] = match_list[5]
         match['Win_Team'] = match_list[3]
-    else if match_list[4]=="L"::
+    
+    elif match_list[4]=="L":
         match['Team1'] = match_list[5]
         match['Team2'] = match_list[3]
         match['Win_Team'] = match_list[5]
 
     #Break down score into games
+    score1, score2 = 0,0
+    for set_score in match_list[6].split(', '):
+        score1 += int(set_score.split('-')[0])
+        score2 += int(set_score.split('-')[1])
+    
+    match['Win_Games'] = max(score1, score2)
+    match['Lose_Games'] = min(score1, score2)
+    match['Delta_Pct_Games'] = round(abs((score1/(score1+score2))-(score2/(score1+score2))), 4)
 
-
+    pprint.pprint(match)
 #    for table in match_div:
         #Single match level
 
