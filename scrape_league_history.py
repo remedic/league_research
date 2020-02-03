@@ -181,7 +181,7 @@ def get_matches(url, match_variables):
     html = BeautifulSoup(raw_html, 'html.parser')
 
     match_div = html.findAll('div', {'class':'container496'})
-    match_html = match_div[0]
+    match_html = match_div[1]
     match = dict.fromkeys(match_variables)
     
     match_list = match_html.text.rstrip().split('\n')
@@ -189,22 +189,26 @@ def get_matches(url, match_variables):
     match_list = [x for x in match_list if x]
    
     #get player name
-    
-    print(re.find(r'*playername*', match_div))
+    name_links=html.findAll('a', {'class':'link'})
     
     match['Match_Date'] = match_list[0]
     match['Court'] = match_list[1]
     match['League'] = match_list[2]
-
+    print(len(match_list))
     if match_list[4]=="W":
         match['Team1'] = match_list[3]
         match['Team2'] = match_list[5]
         match['Win_Team'] = match_list[3]
-    
+        match['Team1_P1'] = name_links[1].text
+        match['Team2_P1'] = re.match(r'.*(?=\s\()', match_list[7])[0]
+        match['Team1_P1_MR'] = re.match(r'Match:\s(.*)', match_list[8])[1]
     elif match_list[4]=="L":
         match['Team1'] = match_list[5]
         match['Team2'] = match_list[3]
         match['Win_Team'] = match_list[5]
+        match['Team2_P1'] = name_links[1].text
+        match['Team1_P1'] = re.match(r'.*(?=\s\()', match_list[7])[0]
+        match['Team2_P1_MR'] = re.match(r'Match:\s(.*)', match_list[8])[1]
 
     #Break down score into games
     score1, score2 = 0,0
