@@ -7,6 +7,7 @@ from bs4 import BeautifulSoup
 import re
 import copy
 import pprint
+import statistics
 
 def main():
     run='test'
@@ -181,20 +182,33 @@ def get_matches(url, match_variables):
     html = BeautifulSoup(raw_html, 'html.parser')
 
     match_div = html.findAll('div', {'class':'container496'})
-    match_html = match_div[1]
-    match = dict.fromkeys(match_variables)
+    match_html = match_div[3]
     
     match_list = match_html.text.rstrip().split('\n')
     match_list = (x.rstrip() for x in match_list)
     match_list = [x for x in match_list if x]
    
+    print(match_list)
+
+    if len(match_list)==10:
+        match = get_singles_match(html, match_html, match_variables)
+    elif len(match_list)==11:
+        match = get_doubles_match(html, match_html, match_variables)
+
+def get_singles_match(html, match_html, match_variables):
+    match = dict.fromkeys(match_variables)
+    
+    match_list = match_html.text.rstrip().split('\n')
+    match_list = (x.rstrip() for x in match_list)
+    match_list = [x for x in match_list if x]
+    
     #get player name
     name_links=html.findAll('a', {'class':'link'})
     
     match['Match_Date'] = match_list[0]
     match['Court'] = match_list[1]
     match['League'] = match_list[2]
-    print(len(match_list))
+    
     if match_list[4]=="W":
         match['Team1'] = match_list[3]
         match['Team2'] = match_list[5]
@@ -202,6 +216,7 @@ def get_matches(url, match_variables):
         match['Team1_P1'] = name_links[1].text
         match['Team2_P1'] = re.match(r'.*(?=\s\()', match_list[7])[0]
         match['Team1_P1_MR'] = re.match(r'Match:\s(.*)', match_list[8])[1]
+    
     elif match_list[4]=="L":
         match['Team1'] = match_list[5]
         match['Team2'] = match_list[3]
@@ -220,11 +235,87 @@ def get_matches(url, match_variables):
     match['Lose_Games'] = min(score1, score2)
     match['Delta_Pct_Games'] = round(abs((score1/(score1+score2))-(score2/(score1+score2))), 4)
 
+
     pprint.pprint(match)
-#    for table in match_div:
-        #Single match level
+    return(match)
 
+def get_doubles_match(html, match_html, match_variables):
+    match = dict.fromkeys(match_variables)
+    
+    match_list = match_html.text.rstrip().split('\n')
+    match_list = (x.rstrip() for x in match_list)
+    match_list = [x for x in match_list if x]
+    
+    #get player name
+    name_links=html.findAll('a', {'class':'link'})
+    
+    match['Match_Date'] = match_list[0]
+    match['Court'] = match_list[1]
+    match['League'] = match_list[2]
+    
+    if match_list[4]=="W":
+        match['Team1'] = match_list[3]
+        match['Team2'] = match_list[5]
+        match['Win_Team'] = match_list[3]
 
+        match['Team1_P1'] = name_links[1].text
+        match['Team1_P2'] = re.split('\(|\)',match_list[6])[0]
+        match['Team1_P2_IR'] = re.split('\(|\)',match_list[6])[1]
+        match['Team1_P1_MR'] = re.match(r'Match:\s(.*)', match_list[9])[1]
+
+        match['Team2_P1'] = re.split('\(|\)',match_list[8])[0]
+        match['Team2_P2'] = re.split('\(|\)',match_list[8])[2]
+        match['Team2_P1_IR'] = re.split('\(|\)',match_list[8])[1]
+        match['Team2_P2_IR'] = re.split('\(|\)',match_list[8])[3]
+        match['Team2_Avg_IR'] = statistics.mean([float(match['Team2_P1_IR']), float(match['Team2_P2_IR'])])
+
+    elif match_list[4]=="L":
+        match['Team1'] = match_list[5]
+        match['Team2'] = match_list[3]
+        match['Win_Team'] = match_list[5]
+        
+        match['Team2_P1'] = name_links[1].text
+        match['Team2_P2'] = re.match(r'.*(?=\s\()', match_list[6])[0]
+        match['Team2_P1_MR'] = re.match(r'Match:\s(.*)', match_list[9])[1]
+        
+        match['Team1_P1'] = re.split('\(|\)',match_list[8])[0]
+        match['Team1_P2'] = re.split('\(|\)',match_list[8])[2]
+        match['Team1_P1_IR'] = re.split('\(|\)',match_list[8])[1]
+        match['Team1_P2_IR'] = re.split('\(|\)',match_list[8])[3]
+        match['Team1_Avg_IR'] = statistics.mean([float(match['Team1_P1_IR']), float(match['Team1_P2_IR'])])
+    
+    #Break down score into games
+    score1, score2 = 0,0
+    for set_score in match_list[7].split(', '):
+        score1 += int(set_score.split('-')[0])
+        score2 += int(set_score.split('-')[1])
+    
+    match['Win_Games'] = max(score1, score2)
+    match['Lose_Games'] = min(score1, score2)
+    match['Delta_Pct_Games'] = round(abs((score1/(score1+score2))-(score2/(score1+score2))), 4)
+    
+    #Grab link to match detail page
+    links=match_html.findAll('a', {'class':'link'})
+    for link in links:
+        if "matchresults" in link['href']:
+            match_url = "https://www.tennisrecord.com" + link['href']
+            
+            match = get_match_details(match_url, match)
+
+    pprint.pprint(match)
+
+    return(match)
+
+def get_match_details(match_url, match):
+    raw_html = simple_get(match_url)
+    html = BeautifulSoup(raw_html, 'html.parser')
+
+    print(match['Court'])
+    match_div = html.findAll('div', {'class':'container496'})
+    match_index= {'S1':2, 'S2':3, 'D1':4, 'D2':5, 'D3':6}
+    print(repr(match_div[match_index[match['Court']]]))
+
+            
 
 def get_vars(base_url, url, review_vars):
     """
