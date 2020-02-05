@@ -116,7 +116,7 @@ def get_matches(url, match_variables):
     html = BeautifulSoup(raw_html, 'html.parser')
 
     match_div = html.findAll('div', {'class':'container496'})
-    match_html = match_div[2]
+    match_html = match_div[3]
     
     match_list = match_html.text.rstrip().split('\n')
     match_list = (x.rstrip() for x in match_list)
@@ -125,109 +125,73 @@ def get_matches(url, match_variables):
     print(match_list)
 
     if len(match_list)==10:
-        match = get_singles_match(html, match_html, match_variables)
+        match = get_match(html, match_html, match_variables, 'S')
     elif len(match_list)==11:
-        match = get_doubles_match(html, match_html, match_variables)
+        match = get_match(html, match_html, match_variables, 'D')
 
-def get_singles_match(html, match_html, match_variables):
+def get_match(html, match_html, match_variables, match_format):
     match = dict.fromkeys(match_variables)
-    
+
+    #Parse match data
     match_list = match_html.text.rstrip().split('\n')
     match_list = (x.rstrip() for x in match_list)
     match_list = [x for x in match_list if x]
     
-    #get player name
+    #Get root player name
     name_links=html.findAll('a', {'class':'link'})
-    
+
+    #Get basic match data
     match['Match_Date'] = match_list[0]
     match['Court'] = match_list[1]
     match['League'] = match_list[2]
     
-    if match_list[4]=="W":
-        match['Team1'] = match_list[3]
-        match['Team2'] = match_list[5]
-        match['Win_Team'] = match_list[3]
-        match['Team1_P1'] = name_links[1].text
-        match['Team2_P1'] = re.match(r'.*(?=\s\()', match_list[7])[0]
-        match['Team1_P1_MR'] = re.match(r'Match:\s(.*)', match_list[8])[1]
-    
-    elif match_list[4]=="L":
-        match['Team1'] = match_list[5]
-        match['Team2'] = match_list[3]
-        match['Win_Team'] = match_list[5]
-        match['Team2_P1'] = name_links[1].text
-        match['Team1_P1'] = re.match(r'.*(?=\s\()', match_list[7])[0]
-        match['Team2_P1_MR'] = re.match(r'Match:\s(.*)', match_list[8])[1]
+    #Get team and player names
+    match = get_team_player(name_links, match_list, match_format, match)
 
-    match = get_score(match_list,  match, 'Singles')
+    #Get score
+    match = get_score(match_list, match, match_format)
 
-    #Grab link to match detail page
+    #Grab link to match detail page and grab player IRs
     links=match_html.findAll('a', {'class':'link'})
     for link in links:
         if "matchresults" in link['href']:
-            match_url = "https://www.tennisrecord.com" + link['href']
-            
-            match = get_match_details(match_url, match, 'Singles')
-    
-    match['Team1_Avg_IR'] = float(match['Team1_P1_IR'])
-    match['Team2_Avg_IR'] = float(match['Team2_P1_IR'])
-    match['Delta_Team_IR'] = match['Team1_Avg_IR'] - match['Team2_Avg_IR']    
-    
+            match_url = "https://www.tennisrecord.com" + link['href']            
+            match = get_match_IR(match_url, match, match_format)
+
     pprint.pprint(match)
     return(match)
 
-def get_doubles_match(html, match_html, match_variables):
-    match = dict.fromkeys(match_variables)
-    
-    match_list = match_html.text.rstrip().split('\n')
-    match_list = (x.rstrip() for x in match_list)
-    match_list = [x for x in match_list if x]
-    
-    #get player name
-    name_links=html.findAll('a', {'class':'link'})
-    
-    match['Match_Date'] = match_list[0]
-    match['Court'] = match_list[1]
-    match['League'] = match_list[2]
-    
+def get_team_player(name_links, match_list, match_format, match):
+    #Winners assigned to team 1 regardless of root player
     if match_list[4]=="W":
+        #Get team names
         match['Team1'] = match_list[3]
         match['Team2'] = match_list[5]
         match['Win_Team'] = match_list[3]
 
+        #Get player names
         match['Team1_P1'] = name_links[1].text.strip()
-        match['Team1_P2'] = re.split('\(|\)',match_list[6])[0].strip()
-        match['Team1_P1_MR'] = re.match(r'Match:\s(.*)', match_list[9])[1]
-
-        match['Team2_P1'] = re.split('\(|\)',match_list[8])[0].strip()
-        match['Team2_P2'] = re.split('\(|\)',match_list[8])[2].strip()
-
-    elif match_list[4]=="L":
+        if match_format=="S":
+            match['Team2_P1'] = re.match(r'.*(?=\s\()', match_list[7])[0]
+        if match_format=="D":
+            match['Team1_P2'] = re.split('\(|\)',match_list[6])[0].strip()
+            match['Team2_P1'] = re.split('\(|\)',match_list[8])[0].strip()
+            match['Team2_P2'] = re.split('\(|\)',match_list[8])[2].strip()
+    
+    if match_list[4]=="L":
+        #Get team names
         match['Team1'] = match_list[5]
         match['Team2'] = match_list[3]
         match['Win_Team'] = match_list[5]
-        
+   
         match['Team2_P1'] = name_links[1].text.strip()
-        match['Team2_P2'] = re.match(r'.*(?=\s\()', match_list[6])[0].strip()
-        match['Team2_P1_MR'] = re.match(r'Match:\s(.*)', match_list[9])[1]
-        
-        match['Team1_P1'] = re.split('\(|\)',match_list[8])[0].strip()
-        match['Team1_P2'] = re.split('\(|\)',match_list[8])[2].strip()
-    
-    match = get_score(match_list,  match, 'Doubles')
-
-    #Grab link to match detail page
-    links=match_html.findAll('a', {'class':'link'})
-    for link in links:
-        if "matchresults" in link['href']:
-            match_url = "https://www.tennisrecord.com" + link['href']
-            
-            match = get_match_details(match_url, match, 'Doubles')
-
-    match['Team1_Avg_IR'] = statistics.mean([float(match['Team1_P1_IR']), float(match['Team1_P2_IR'])])
-    match['Team2_Avg_IR'] = statistics.mean([float(match['Team2_P1_IR']), float(match['Team2_P2_IR'])])
-    match['Delta_Team_IR'] = match['Team1_Avg_IR'] - match['Team2_Avg_IR']    
-    pprint.pprint(match)
+        #Get player names
+        if match_format=="S":
+            match['Team1_P1'] = re.match(r'.*(?=\s\()', match_list[7])[0]
+        if match_format=="D":
+            match['Team2_P2'] = re.match(r'.*(?=\s\()', match_list[6])[0].strip()
+            match['Team1_P1'] = re.split('\(|\)',match_list[8])[0].strip()
+            match['Team1_P2'] = re.split('\(|\)',match_list[8])[2].strip()
 
     return(match)
 
@@ -235,9 +199,9 @@ def get_score(match_list, match, match_format):
 
     #Break down score into games
     score1, score2, sets = 0,0,[]
-    if match_format=='Singles':
+    if match_format=='S':
         sets = match_list[6].split(', ')
-    if match_format=='Doubles':
+    if match_format=='D':
         sets = match_list[7].split(', ')
     for set_score in sets:
         score1 += int(set_score.split('-')[0])
@@ -259,7 +223,7 @@ def get_score(match_list, match, match_format):
 
     return(match)
 
-def get_match_details(match_url, match, match_format):
+def get_match_IR(match_url, match, match_format):
     raw_html = simple_get(match_url)
     html = BeautifulSoup(raw_html, 'html.parser')
 
@@ -267,66 +231,35 @@ def get_match_details(match_url, match, match_format):
     match_index= {'S1':2, 'S2':3, 'D1':4, 'D2':5, 'D3':6}
     
     name_list=[]
-    if match_format=='Singles':
+    if match_format=='S':
         name_list = [match['Team1_P1'], match['Team2_P1']]
-    if match_format=='Doubles':
+    if match_format=='D':
         name_list = [match['Team1_P1'], match['Team1_P2'], match['Team2_P1'], match['Team2_P2']]
     
     names_IR = list(dict.fromkeys(re.findall(r"(?=(" + '|'.join(name_list) + r"|\(\d\.\d+\)" + r"))", str(match_div[match_index[match['Court']]]))))
     
-    if match_format=='Singles':
+    if match_format=='S':
         names_IR[2], names_IR[3] = names_IR[3], names_IR[2]
-    if match_format=='Doubles':
+    if match_format=='D':
         names_IR[4], names_IR[5], names_IR[6], names_IR[7] = names_IR[5], names_IR[4], names_IR[7], names_IR[6]
 
     for x in ['Team1_P1','Team1_P2','Team2_P1','Team2_P2']:
         for index,y in enumerate(names_IR):
             if match[x]==y:
                 match[x+'_IR'] = names_IR[index+1].replace('(','').replace(')','')
+    
+    if match_format=="S":
+        match['Team1_Avg_IR'] = float(match['Team1_P1_IR'])
+        match['Team2_Avg_IR'] = float(match['Team2_P1_IR'])
+        match['Delta_Team_IR'] = match['Team1_Avg_IR'] - match['Team2_Avg_IR']    
+    if match_format=="D":
+        match['Team1_Avg_IR'] = statistics.mean([float(match['Team1_P1_IR']), float(match['Team1_P2_IR'])])
+        match['Team2_Avg_IR'] = statistics.mean([float(match['Team2_P1_IR']), float(match['Team2_P2_IR'])])
+        match['Delta_Team_IR'] = match['Team1_Avg_IR'] - match['Team2_Avg_IR']    
 
     return(match)      
 
 
-def get_vars(base_url, url, review_vars):
-    """
-    Pull review variabes from review webpage table.
-    """
-    raw_html = simple_get(url)
-    html = BeautifulSoup(raw_html, 'html.parser')
-    review = dict.fromkeys(review_vars)
-  
-    #NAME
-    review['Name'] = re.sub(r" String.*?Review" , "",html.find('h1').text)
-
-    #PRICE
-    if html.find('div', {'id':'pricebox'}):
-        review['Price'] = html.find('div', {'id':'pricebox'}).find('h1').text
-    if html.find('span', {'class':'price'}):
-        review['Price'] = html.find('span', {'class':'price'}).text.replace('Price: ', '')
-    
-    #REVIEW VARIABLES
-    if html.find('div', {'class':'score_box'}):
-        for tr in html.find('div', {'class':'score_box'}).select('tr'):
-            fields = tr.text.strip().split('\n')
-            if fields[0] in review_vars:
-                review[fields[0]] = fields[1]
-            if fields[0] in ['Touch','Feel']:
-                review['Touch/Feel'] = fields[1]
-    if html.find('div', {'class':'review_scores'}):
-        for tr in html.find('div', {'class':'review_scores'}).select('tr'):
-            fields = tr.text.strip().split('\n')
-            if fields[0] in review_vars:
-                review[fields[0]] = fields[1]
-            if fields[0] in ['Touch','Feel']:
-                review['Touch/Feel'] = fields[1]
-
-    #URL
-    if html.find('div', {'id':'pricebox'}):
-        review['URL'] = base_url + html.find('div', {'id':'pricebox'}).find('a')['href']
-    if html.find('div', {'class':'review_btns'}):
-        review['URL'] = html.find('a', {'class':'button'})['href']
-    
-    return(review)
 
 def check_dups(review, db):
     """
