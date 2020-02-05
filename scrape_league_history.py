@@ -8,11 +8,11 @@ import re
 import copy
 import pprint
 import statistics
+from html import escape
 
 def main():
-    run='test'
-    url = 'https://www.tennis-warehouse.com/stringcontent.html'
-    base_url = 'https://www.tennis-warehouse.com'
+    run='all'
+    league_url = 'https://www.tennisrecord.com/adult/league.aspx?flightname=3.5%20Adult%2018%20%26%20Over%20Women%20Night&year=2020'
 
     match_variables = ['Match_Date', 'League', 
             'Team1', 'Team2', 'Court', 
@@ -24,53 +24,48 @@ def main():
 
 
     if run=='test':
+        db= {}
         url="https://www.tennisrecord.com/adult/matchhistory.aspx?year=2020&playername=Elizabeth%20Gerlach&lt=0"
-        matches = get_matches(url, match_variables)
-        print(matches)
-
+        db = get_player_year_matches(url, match_variables, db)
+        print(str(len(db)) + " matches in database")
 
     if run=='all':
         db = {}
         fail = []
-        index = 1
-        req = get(url)
-        soup = BeautifulSoup(req.text, "html.parser")
-        brand_links = soup.find_all('ul', {'class':'lnav_section'})
-        for bl in brand_links:
-            for link in bl.select('li'):
-                if 'String' in link.text.strip().split()[-1]:
-                    url2 = base_url + link.find('a')['href']
-                    brand = get(url2)
-                    soup_brand = BeautifulSoup(brand.text, "html.parser")
-                    review_links = soup_brand.find_all("a",{'class':'review'})
-                    for rl in review_links:
-                        url3 = base_url + rl['href']
-                        print(url3)
-                        try:
-                            review = get_vars(base_url, url3, variables)
-                            if not check_dups(review, db):
-                                db[index] = review
-                                index = index + 1
-                            else:
-                                pass
-                        except:
-                            fail.append(url3)
-                            pass
+        league = get(league_url)
+        league_html = BeautifulSoup(league.text, "html.parser")
         
+        #For team in league
+        team_links = league_html.findAll('a', {'class':'link'})
+        for link in team_links:
+            if "teamprofile" in link['href']:
+                team_url = "https://www.tennisrecord.com" + link['href']
+                team = get(team_url)
+                team_html = BeautifulSoup(team.text, "html.parser")
+                #For player on team
+                player_links = team_html.findAll('a', {'class':'link'})
+                for player_link in player_links:
+                    if "playername" in player_link['href']:
+                        player_url = "https://www.tennisrecord.com" + player_link['href']
+                        player = get(player_url)
+                        player_html = BeautifulSoup(player.text, "html.parser")
+                        year_links = player_html.findAll('a', {'class':'link'})
+                        for year_link in year_links:
+                            if ("matchhistory" in year_link['href'] and "mt=" not in year_link['href'] and "Current Match History" not in year_link.text):
+                                year_link = year_link['href'].replace('<','&lt')
+                                player_year_url = "https://www.tennisrecord.com" + year_link
+                                db = get_player_year_matches(player_year_url, match_variables, db)
+    
+    print(str(len(db)) + " matches in database")
         
-        if len(fail)>0:
-            print("\nFAILED URLS:")
-            for url in fail:
-                print(url)
-        else:
-            print("\nNO FAILED URLS")
 
-        with open("strings.tsv", "w") as f:
-            print('\t'.join(variables), file = f)
-            for k,v in db.items():
-                vals=list(db[k].values())
-                vals = ['None' if v is None else v for v in vals]
-                print('\t'.join(vals), file = f)
+    with open("match_db.tsv", "w") as f:
+        print('\t'.join(match_variables), file = f)
+        for k,v in db.items():
+            vals=list(db[k].values())
+            vals = ['None' if v is None else v for v in vals]
+            vals = [str(x) for x in vals]
+            print('\t'.join(vals), file = f)
 
 def simple_get(url):
     """
@@ -108,7 +103,7 @@ def log_error(e):
     """
     print(e)
 
-def get_matches(url, match_variables):
+def get_player_year_matches(url, match_variables, db):
     """
     Pull match variables for a player year
     """
@@ -116,25 +111,31 @@ def get_matches(url, match_variables):
     html = BeautifulSoup(raw_html, 'html.parser')
 
     match_div = html.findAll('div', {'class':'container496'})
-    match_html = match_div[1]
-    
-    match_list = match_html.text.rstrip().split('\n')
-    match_list = (x.rstrip() for x in match_list)
-    match_list = [x for x in match_list if x]
+    for match_html in match_div:
+        match_list = match_html.text.rstrip().split('\n')
+        match_list = (x.rstrip() for x in match_list)
+        match_list = [x for x in match_list if x]
    
-    if len(match_list)==10:
-        match = get_match(html, match_html, match_variables, 'S')
-    elif len(match_list)==11:
-        match = get_match(html, match_html, match_variables, 'D')
+        if len(match_list)==10:
+            match = get_match(html, match_html, match_variables, 'S')
+        elif len(match_list)==11:
+            match = get_match(html, match_html, match_variables, 'D')
+        
+        if check_dups(match,db)==False:
+            db[len(db)+1] = match
+    
+    return(db)
 
 def get_match(html, match_html, match_variables, match_format):
     match = dict.fromkeys(match_variables)
-
+    
     #Parse match data
     match_list = match_html.text.rstrip().split('\n')
     match_list = (x.rstrip() for x in match_list)
     match_list = [x for x in match_list if x]
-    
+ 
+    print(match_list)
+
     #Get root player name
     name_links=html.findAll('a', {'class':'link'})
 
@@ -158,8 +159,6 @@ def get_match(html, match_html, match_variables, match_format):
 
     #Get player MRs
     match = get_match_MR(match_html, match_list, match_format, match)
-
-    pprint.pprint(match)
     return(match)
 
 def get_match_MR(match_html, match_list, match_format, match):
@@ -206,15 +205,19 @@ def get_match_MR(match_html, match_list, match_format, match):
                                  match[x+'_MR'] = mr
    
     if match_format=="S":
-        match['Team1_Avg_MR'] = float(match['Team1_P1_MR'])
-        match['Team2_Avg_MR'] = float(match['Team2_P1_MR'])
-        match['Delta_Team_MR'] = match['Team1_Avg_MR'] - match['Team2_Avg_MR']    
+        try:
+            match['Team1_Avg_MR'] = float(match['Team1_P1_MR'])
+            match['Team2_Avg_MR'] = float(match['Team2_P1_MR'])
+            match['Delta_Team_MR'] = match['Team1_Avg_MR'] - match['Team2_Avg_MR']
+        except:
+            pass
     if match_format=="D":
-        match['Team1_Avg_MR'] = statistics.mean([float(match['Team1_P1_MR']), float(match['Team1_P2_MR'])])
-        match['Team2_Avg_MR'] = statistics.mean([float(match['Team2_P1_MR']), float(match['Team2_P2_MR'])])
-        match['Delta_Team_MR'] = match['Team1_Avg_MR'] - match['Team2_Avg_MR']    
-
-
+        try:
+            match['Team1_Avg_MR'] = statistics.mean([float(match['Team1_P1_MR']), float(match['Team1_P2_MR'])])
+            match['Team2_Avg_MR'] = statistics.mean([float(match['Team2_P1_MR']), float(match['Team2_P2_MR'])])
+            match['Delta_Team_MR'] = match['Team1_Avg_MR'] - match['Team2_Avg_MR']    
+        except:
+            pass
     return(match)
 
 def get_team_player(name_links, match_list, match_format, match):
@@ -291,12 +294,18 @@ def get_match_IR(match_url, match, match_format):
         name_list = [match['Team1_P1'], match['Team2_P1']]
     if match_format=='D':
         name_list = [match['Team1_P1'], match['Team1_P2'], match['Team2_P1'], match['Team2_P2']]
-    
-    names_IR = list(dict.fromkeys(re.findall(r"(?=(" + '|'.join(name_list) + r"|\(\d\.\d+\)" + r"))", str(match_div[match_index[match['Court']]]))))
+   
+    names_IR = list(re.findall(r"(?=(" + '|'.join(name_list) + r"|\(\d\.\d+\)" + r"|\(-----\)" + r"))", str(match_div[match_index[match['Court']]])))
     
     if match_format=='S':
+        del names_IR[5]
+        del names_IR[0]
         names_IR[2], names_IR[3] = names_IR[3], names_IR[2]
     if match_format=='D':
+        del names_IR[11]
+        del names_IR[8]
+        del names_IR[3]
+        del names_IR[0]
         names_IR[4], names_IR[5], names_IR[6], names_IR[7] = names_IR[5], names_IR[4], names_IR[7], names_IR[6]
 
     for x in ['Team1_P1','Team1_P2','Team2_P1','Team2_P2']:
@@ -305,34 +314,42 @@ def get_match_IR(match_url, match, match_format):
                 match[x+'_IR'] = names_IR[index+1].replace('(','').replace(')','')
     
     if match_format=="S":
-        match['Team1_Avg_IR'] = float(match['Team1_P1_IR'])
-        match['Team2_Avg_IR'] = float(match['Team2_P1_IR'])
-        match['Delta_Team_IR'] = match['Team1_Avg_IR'] - match['Team2_Avg_IR']    
+        try:
+            match['Team1_Avg_IR'] = float(match['Team1_P1_IR'])
+            match['Team2_Avg_IR'] = float(match['Team2_P1_IR'])
+            match['Delta_Team_IR'] = match['Team1_Avg_IR'] - match['Team2_Avg_IR']    
+        except:
+            pass
     if match_format=="D":
-        match['Team1_Avg_IR'] = statistics.mean([float(match['Team1_P1_IR']), float(match['Team1_P2_IR'])])
-        match['Team2_Avg_IR'] = statistics.mean([float(match['Team2_P1_IR']), float(match['Team2_P2_IR'])])
-        match['Delta_Team_IR'] = match['Team1_Avg_IR'] - match['Team2_Avg_IR']    
-
+        try:
+            match['Team1_Avg_IR'] = statistics.mean([float(match['Team1_P1_IR']), float(match['Team1_P2_IR'])])
+            match['Team2_Avg_IR'] = statistics.mean([float(match['Team2_P1_IR']), float(match['Team2_P2_IR'])])
+            match['Delta_Team_IR'] = match['Team1_Avg_IR'] - match['Team2_Avg_IR']    
+        except:
+            pass
     return(match)      
 
 
 
-def check_dups(review, db):
+def check_dups(match, db):
     """
     Check if there is a duplicate row in dict already (excluding price and url)
     """
 
     if len(db)>0:
-        tmp_review = copy.deepcopy(review)
-        del tmp_review['Price']
-        del tmp_review['URL']
+        tmp_match = copy.deepcopy(match)
+        for key, value in match.items():
+            if ("Team1_P" in key or "Team2_P" in key):
+                del tmp_match[key]
 
         tmp_db = copy.deepcopy(db)
-        for index,string_dict in tmp_db.items():
-            del string_dict['Price']
-            del string_dict['URL']
+        for index,string_dict in db.items():
+            for key, value in string_dict.items():
+                if ("Team1_P" in key or "Team2_P" in key):
+                    del tmp_db[index][key]
+                
         
-        if tmp_review in tmp_db.values():
+        if tmp_match in tmp_db.values():
             return True
         else:
             return False
