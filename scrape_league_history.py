@@ -116,14 +116,12 @@ def get_matches(url, match_variables):
     html = BeautifulSoup(raw_html, 'html.parser')
 
     match_div = html.findAll('div', {'class':'container496'})
-    match_html = match_div[3]
+    match_html = match_div[1]
     
     match_list = match_html.text.rstrip().split('\n')
     match_list = (x.rstrip() for x in match_list)
     match_list = [x for x in match_list if x]
    
-    print(match_list)
-
     if len(match_list)==10:
         match = get_match(html, match_html, match_variables, 'S')
     elif len(match_list)==11:
@@ -158,7 +156,65 @@ def get_match(html, match_html, match_variables, match_format):
             match_url = "https://www.tennisrecord.com" + link['href']            
             match = get_match_IR(match_url, match, match_format)
 
+    #Get player MRs
+    match = get_match_MR(match_html, match_list, match_format, match)
+
     pprint.pprint(match)
+    return(match)
+
+def get_match_MR(match_html, match_list, match_format, match):
+    #Get root player MR
+    if match_list[4]=="W":
+        if match_format=="S":
+            match["Team1_P1_MR"] = match_list[8].replace("Match: ","")
+        if match_format=="D":
+            match["Team1_P1_MR"] = match_list[9].replace("Match: ","")
+    if match_list[4]=="L":
+        if match_format=="S":
+            match["Team2_P1_MR"] = match_list[8].replace("Match: ","")
+        if match_format=="D":
+            match["Team2_P1_MR"] = match_list[9].replace("Match: ","")
+  
+    #Grab link to player match history page and grab player MR
+    links=match_html.findAll('a', {'class':'link'})
+    for link in links:
+        if "matchhistory" in link['href']:
+            player_url = "https://www.tennisrecord.com" + link['href']            
+            player_raw_html = simple_get(player_url)
+            player_html = BeautifulSoup(player_raw_html, 'html.parser')
+            match_div = player_html.findAll('div', {'class':'container496'})
+            for m in match_div:
+                match_list2 = m.text.rstrip().split('\n')
+                match_list2 = (x.rstrip() for x in match_list2)
+                match_list2 = [x for x in match_list2 if x]
+                
+                #Filter match by date, court, league, and teams
+                if (match['Match_Date']==match_list2[0] and 
+                    match['Court']==match_list2[1] and
+                    match['League']==match_list[2] and
+                    ((match['Team1']==match_list[3] and match['Team2']==match_list[5]) or
+                    (match['Team1']==match_list[5] and match['Team2']==match_list[3]))):
+                        #Get root player name
+                        name_links=player_html.findAll('a', {'class':'link'})
+                        root_player = name_links[1].text.strip()
+                        if match_format=="S":
+                            mr = match_list2[8].replace("Match: ","")
+                        if match_format=="D":
+                            mr = match_list2[9].replace("Match: ","")
+                        for x in ['Team1_P1','Team1_P2','Team2_P1','Team2_P2']:
+                            if match[x]==root_player:
+                                 match[x+'_MR'] = mr
+   
+    if match_format=="S":
+        match['Team1_Avg_MR'] = float(match['Team1_P1_MR'])
+        match['Team2_Avg_MR'] = float(match['Team2_P1_MR'])
+        match['Delta_Team_MR'] = match['Team1_Avg_MR'] - match['Team2_Avg_MR']    
+    if match_format=="D":
+        match['Team1_Avg_MR'] = statistics.mean([float(match['Team1_P1_MR']), float(match['Team1_P2_MR'])])
+        match['Team2_Avg_MR'] = statistics.mean([float(match['Team2_P1_MR']), float(match['Team2_P2_MR'])])
+        match['Delta_Team_MR'] = match['Team1_Avg_MR'] - match['Team2_Avg_MR']    
+
+
     return(match)
 
 def get_team_player(name_links, match_list, match_format, match):
