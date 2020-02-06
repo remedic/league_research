@@ -9,10 +9,30 @@ import copy
 import pprint
 import statistics
 from html import escape
+import argparse
 
 def main():
-    run='all'
-    league_url = 'https://www.tennisrecord.com/adult/league.aspx?flightname=3.5%20Adult%2018%20%26%20Over%20Women%20Night&year=2020'
+    parser = argparse.ArgumentParser(description='Short sample app')
+
+    parser.add_argument('-l', action="store_true")
+    parser.add_argument('-t', action="store_true")
+    parser.add_argument('-p', action="store_true")
+    parser.add_argument('-y', action="store_true")
+    parser.add_argument('-m', action="store", type=str, help="Match date m/d/y")
+    parser.add_argument("url", type=str, help="URL")
+    args = parser.parse_args()
+
+    url = args.url
+    if args.l:
+        run="league"
+    if args.t:
+        run="team"
+    if args.p:
+        run="player"
+    if args.y:
+        run="player_year"
+    if args.m:
+        run="match"
 
     match_variables = ['Match_Date', 'League', 
             'Team1', 'Team2', 'Court', 
@@ -22,15 +42,9 @@ def main():
             'Team1_P1_MR', 'Team1_P2_MR', 'Team2_P1_MR', 'Team2_P2_MR', 'Team1_Avg_MR', 'Team2_Avg_MR',
             'Delta_Team_IR', 'Delta_Team_MR']
 
-
-    if run=='test':
-        db= {}
-        url = "https://www.tennisrecord.com/adult/matchhistory.aspx?year=2019&playername=Joann%20Suyao&lt=0"
-        db = get_player_year_matches(url, match_variables, db)
-
-    if run=='all':
+    if run=='league':
         db = {}
-        fail = []
+        league_url=url
         league = get(league_url)
         league_html = BeautifulSoup(league.text, "html.parser")
         
@@ -55,9 +69,76 @@ def main():
                                 player_year_url = "https://www.tennisrecord.com" + year_link
                                 db = get_player_year_matches(player_year_url, match_variables, db)
     
+    if run=="team":
+        db = {}
+        
+        team_url=url
+        team = get(team_url)
+        team_html = BeautifulSoup(team.text, "html.parser")
+        
+        #For player on team
+        player_links = team_html.findAll('a', {'class':'link'})
+        for player_link in player_links:
+            if "playername" in player_link['href']:
+                    player_url = "https://www.tennisrecord.com" + player_link['href']
+                    player = get(player_url)
+                    player_html = BeautifulSoup(player.text, "html.parser")
+                    year_links = player_html.findAll('a', {'class':'link'})
+                    for year_link in year_links:
+                        if ("matchhistory" in year_link['href'] and "mt=" not in year_link['href'] and "Current Match History" not in year_link.text):
+                            year_link = year_link['href'].replace('<','&lt')
+                            player_year_url = "https://www.tennisrecord.com" + year_link
+                            db = get_player_year_matches(player_year_url, match_variables, db)
+    
+    if run=="player":
+        db = {}
+        
+        player_url = url
+        player = get(player_url)
+        player_html = BeautifulSoup(player.text, "html.parser")
+        year_links = player_html.findAll('a', {'class':'link'})
+        for year_link in year_links:
+            if ("matchhistory" in year_link['href'] and "mt=" not in year_link['href'] and "Current Match History" not in year_link.text):
+                year_link = year_link['href'].replace('<','&lt')
+                player_year_url = "https://www.tennisrecord.com" + year_link
+                db = get_player_year_matches(player_year_url, match_variables, db)
+    
+    if run=="player_year":
+        db = {}
+        
+        player_year_url = url
+        db = get_player_year_matches(player_year_url, match_variables, db)
+
+    if run=="match":
+        db = {}
+        
+        player_year_url = url
+
+        db = get_player_year_matches(player_year_url, match_variables, db)
+        
+        raw_html = simple_get(player_year_url)
+        html = BeautifulSoup(raw_html, 'html.parser')
+
+        match_div = html.findAll('div', {'class':'container496'})
+        for match_html in match_div:
+            match_list = match_html.text.rstrip().split('\n')
+            match_list = (x.rstrip() for x in match_list)
+            match_list = [x for x in match_list if x]
+            
+            if match_list[0]==match_date:
+                if len(match_list)==10:
+                    match = get_match(html, match_html, match_variables, 'S')
+                elif len(match_list)==11:
+                    match = get_match(html, match_html, match_variables, 'D')
+        
+                if check_dups(match,db)==False:
+                    db[len(db)+1] = match
+    
+        return(db)
+
     print(str(len(db)) + " matches in database")
         
-
+    #Write output file
     with open("match_db.tsv", "w") as f:
         print('\t'.join(match_variables), file = f)
         for k,v in db.items():
