@@ -10,9 +10,10 @@ import pprint
 import statistics
 from html import escape
 import argparse
+import sys
 
 def main():
-    parser = argparse.ArgumentParser(description='Short sample app')
+    parser = argparse.ArgumentParser()
 
     parser.add_argument('-l', action="store_true")
     parser.add_argument('-t', action="store_true")
@@ -21,8 +22,11 @@ def main():
     parser.add_argument('-m', action="store", type=str, help="Match date m/d/y")
     parser.add_argument("url", type=str, help="URL")
     args = parser.parse_args()
-
+    
     url = args.url
+
+    run=""
+    db={}
     if args.l:
         run="league"
     if args.t:
@@ -33,6 +37,7 @@ def main():
         run="player_year"
     if args.m:
         run="match"
+        match_date = args.m
 
     match_variables = ['Match_Date', 'League', 
             'Team1', 'Team2', 'Court', 
@@ -43,11 +48,13 @@ def main():
             'Delta_Team_IR', 'Delta_Team_MR']
 
     if run=='league':
-        db = {}
         league_url=url
         league = get(league_url)
         league_html = BeautifulSoup(league.text, "html.parser")
-        
+    
+        tds = league_html.findAll('td')
+        output_name = tds[2].text.replace(" ", "_") + ".tsv"
+
         #For team in league
         team_links = league_html.findAll('a', {'class':'link'})
         for link in team_links:
@@ -70,12 +77,13 @@ def main():
                                 db = get_player_year_matches(player_year_url, match_variables, db)
     
     if run=="team":
-        db = {}
-        
         team_url=url
         team = get(team_url)
         team_html = BeautifulSoup(team.text, "html.parser")
         
+        tds = team_html.findAll('td')
+        output_name = tds[3].text.replace(" ", "_") + ".tsv"
+
         #For player on team
         player_links = team_html.findAll('a', {'class':'link'})
         for player_link in player_links:
@@ -91,11 +99,13 @@ def main():
                             db = get_player_year_matches(player_year_url, match_variables, db)
     
     if run=="player":
-        db = {}
-        
         player_url = url
         player = get(player_url)
         player_html = BeautifulSoup(player.text, "html.parser")
+        
+        tds = player_html.findAll('td')
+        output_name = tds[2].text.split("(")[0].strip().replace(" ", "_") + ".tsv"
+
         year_links = player_html.findAll('a', {'class':'link'})
         for year_link in year_links:
             if ("matchhistory" in year_link['href'] and "mt=" not in year_link['href'] and "Current Match History" not in year_link.text):
@@ -104,18 +114,19 @@ def main():
                 db = get_player_year_matches(player_year_url, match_variables, db)
     
     if run=="player_year":
-        db = {}
-        
         player_year_url = url
+        player = get(player_year_url)
+        player_year_html = BeautifulSoup(player.text, "html.parser")
+        
+        tds = player_html.findAll('td')
+        output_name = tds[2].text.split("(")[0].strip().replace(" ", "_") + ".tsv"
+        print(output_name)
+
         db = get_player_year_matches(player_year_url, match_variables, db)
 
     if run=="match":
-        db = {}
-        
         player_year_url = url
 
-        db = get_player_year_matches(player_year_url, match_variables, db)
-        
         raw_html = simple_get(player_year_url)
         html = BeautifulSoup(raw_html, 'html.parser')
 
@@ -133,10 +144,8 @@ def main():
         
                 if check_dups(match,db)==False:
                     db[len(db)+1] = match
-    
-        return(db)
 
-    print(str(len(db)) + " matches in database")
+    print(str(len(db)) + " match(e)s in database")
         
     #Write output file
     with open("match_db.tsv", "w") as f:
@@ -289,6 +298,8 @@ def get_match_MR(match_html, match_list, match_format, match):
             match['Team1_Avg_MR'] = float(match['Team1_P1_MR'])
             match['Team2_Avg_MR'] = float(match['Team2_P1_MR'])
             match['Delta_Team_MR'] = match['Team1_Avg_MR'] - match['Team2_Avg_MR']
+        except (KeyboardInterrupt,  SystemExit):
+            raise
         except:
             pass
     if match_format=="D":
@@ -296,6 +307,8 @@ def get_match_MR(match_html, match_list, match_format, match):
             match['Team1_Avg_MR'] = statistics.mean([float(match['Team1_P1_MR']), float(match['Team1_P2_MR'])])
             match['Team2_Avg_MR'] = statistics.mean([float(match['Team2_P1_MR']), float(match['Team2_P2_MR'])])
             match['Delta_Team_MR'] = match['Team1_Avg_MR'] - match['Team2_Avg_MR']    
+        except (KeyboardInterrupt,  SystemExit):
+            raise
         except:
             pass
     return(match)
@@ -427,6 +440,8 @@ def get_match_IR(match_url, match, match_format):
                 match['Team1_Avg_IR'] = float(match['Team1_P1_IR'])
                 match['Team2_Avg_IR'] = float(match['Team2_P1_IR'])
                 match['Delta_Team_IR'] = match['Team1_Avg_IR'] - match['Team2_Avg_IR']    
+            except (KeyboardInterrupt,  SystemExit):
+                raise
             except:
                 pass
         if match_format=="D":
@@ -434,8 +449,13 @@ def get_match_IR(match_url, match, match_format):
                 match['Team1_Avg_IR'] = statistics.mean([float(match['Team1_P1_IR']), float(match['Team1_P2_IR'])])
                 match['Team2_Avg_IR'] = statistics.mean([float(match['Team2_P1_IR']), float(match['Team2_P2_IR'])])
                 match['Delta_Team_IR'] = match['Team1_Avg_IR'] - match['Team2_Avg_IR']    
+            except (KeyboardInterrupt,  SystemExit):
+                raise
             except:
                 pass
+    
+    except (KeyboardInterrupt,  SystemExit):
+        raise
     except:
         pass
     return(match)      
