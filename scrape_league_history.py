@@ -25,9 +25,8 @@ def main():
 
     if run=='test':
         db= {}
-        url="https://www.tennisrecord.com/adult/matchhistory.aspx?year=2020&playername=Elizabeth%20Gerlach&lt=0"
+        url = "https://www.tennisrecord.com/adult/matchhistory.aspx?year=2019&playername=Joann%20Suyao&lt=0"
         db = get_player_year_matches(url, match_variables, db)
-        print(str(len(db)) + " matches in database")
 
     if run=='all':
         db = {}
@@ -230,13 +229,31 @@ def get_team_player(name_links, match_list, match_format, match):
 
         #Get player names
         match['Team1_P1'] = name_links[1].text.strip()
-        if match_format=="S":
-            match['Team2_P1'] = re.match(r'.*(?=\s\()', match_list[7])[0]
-        if match_format=="D":
-            match['Team1_P2'] = re.split('\(|\)',match_list[6])[0].strip()
-            match['Team2_P1'] = re.split('\(|\)',match_list[8])[0].strip()
-            match['Team2_P2'] = re.split('\(|\)',match_list[8])[2].strip()
-    
+        if ("(" in match_list[6] or "(" in match_list[7]):
+            if match_format=="S":
+                if match_list[7]=="Default":
+                    match['Team2_P1']="Default"
+                else:
+                    match['Team2_P1'] = re.match(r'.*(?=\s\()', match_list[7])[0]
+            if match_format=="D":
+                if match_list[8]=="Default":
+                    match['Team2_P1']="Default"
+                    match['Team2_P2']="Default"
+                else:
+                    match['Team1_P2'] = re.split('\(|\)',match_list[6])[0].strip()
+                    match['Team2_P1'] = re.split('\(|\)',match_list[8])[0].strip()
+                    match['Team2_P2'] = re.split('\(|\)',match_list[8])[2].strip()
+        else:
+            if match_format=="S":
+                match['Team2_P1'] =  match_list[7].strip()
+            if match_format=="D":
+                if match_list[8]=="Default":
+                    match['Team2_P1']="Default"
+                    match['Team2_P2']="Default"
+                else:
+                    match['Team1_P2'] = match_list[6].strip()
+                    match['Team2_P1'] = re.split('(.*[a-z])([A-Z].*)',match_list[8])[1].strip()
+                    match['Team2_P2'] = re.split('(.*[a-z])([A-Z].*)',match_list[8])[2].strip()
     if match_list[4]=="L":
         #Get team names
         match['Team1'] = match_list[5]
@@ -245,13 +262,20 @@ def get_team_player(name_links, match_list, match_format, match):
    
         match['Team2_P1'] = name_links[1].text.strip()
         #Get player names
-        if match_format=="S":
-            match['Team1_P1'] = re.match(r'.*(?=\s\()', match_list[7])[0]
-        if match_format=="D":
-            match['Team2_P2'] = re.match(r'.*(?=\s\()', match_list[6])[0].strip()
-            match['Team1_P1'] = re.split('\(|\)',match_list[8])[0].strip()
-            match['Team1_P2'] = re.split('\(|\)',match_list[8])[2].strip()
-
+        if ("(" in match_list[6] or "(" in match_list[7]):
+            if match_format=="S":
+                match['Team1_P1'] = re.match(r'.*(?=\s\()', match_list[7])[0]
+            if match_format=="D":
+                match['Team2_P2'] = re.match(r'.*(?=\s\()', match_list[6])[0].strip()
+                match['Team1_P1'] = re.split('\(|\)',match_list[8])[0].strip()
+                match['Team1_P2'] = re.split('\(|\)',match_list[8])[2].strip()
+        else:
+            if match_format=="S":
+                match['Team1_P1'] = match_list[7].strip() 
+            if match_format=="D":
+                match['Team2_P2'] = match_list[6].strip()
+                match['Team1_P1'] = re.split('(.*[a-z])([A-Z].*)',match_list[8])[1].strip()
+                match['Team1_P2'] = re.split('(.*[a-z])([A-Z].*)',match_list[8])[2].strip()
     return(match)
 
 def get_score(match_list, match, match_format):
@@ -287,46 +311,52 @@ def get_match_IR(match_url, match, match_format):
     html = BeautifulSoup(raw_html, 'html.parser')
 
     match_div = html.findAll('div', {'class':'container496'})
-    match_index= {'S1':2, 'S2':3, 'D1':4, 'D2':5, 'D3':6}
+    match_index={}
+    if len(match_div)==5:
+        match_index= {'D1':2, 'D2':3, 'D3':4}
+    if len(match_div)==7:
+        match_index= {'S1':2, 'S2':3, 'D1':4, 'D2':5, 'D3':6}
     
     name_list=[]
     if match_format=='S':
         name_list = [match['Team1_P1'], match['Team2_P1']]
     if match_format=='D':
         name_list = [match['Team1_P1'], match['Team1_P2'], match['Team2_P1'], match['Team2_P2']]
-   
-    names_IR = list(re.findall(r"(?=(" + '|'.join(name_list) + r"|\(\d\.\d+\)" + r"|\(-----\)" + r"))", str(match_div[match_index[match['Court']]])))
     
-    if match_format=='S':
-        del names_IR[5]
-        del names_IR[0]
-        names_IR[2], names_IR[3] = names_IR[3], names_IR[2]
-    if match_format=='D':
-        del names_IR[11]
-        del names_IR[8]
-        del names_IR[3]
-        del names_IR[0]
-        names_IR[4], names_IR[5], names_IR[6], names_IR[7] = names_IR[5], names_IR[4], names_IR[7], names_IR[6]
-
-    for x in ['Team1_P1','Team1_P2','Team2_P1','Team2_P2']:
-        for index,y in enumerate(names_IR):
-            if match[x]==y:
-                match[x+'_IR'] = names_IR[index+1].replace('(','').replace(')','')
-    
-    if match_format=="S":
-        try:
-            match['Team1_Avg_IR'] = float(match['Team1_P1_IR'])
-            match['Team2_Avg_IR'] = float(match['Team2_P1_IR'])
-            match['Delta_Team_IR'] = match['Team1_Avg_IR'] - match['Team2_Avg_IR']    
-        except:
-            pass
-    if match_format=="D":
-        try:
-            match['Team1_Avg_IR'] = statistics.mean([float(match['Team1_P1_IR']), float(match['Team1_P2_IR'])])
-            match['Team2_Avg_IR'] = statistics.mean([float(match['Team2_P1_IR']), float(match['Team2_P2_IR'])])
-            match['Delta_Team_IR'] = match['Team1_Avg_IR'] - match['Team2_Avg_IR']    
-        except:
-            pass
+    try:
+        names_IR = re.findall(r"(?=(" + '|'.join(name_list) + r"|\(\d\.\d+\)" + r"|\(-----\)" + r"))", str(match_div[match_index[match['Court'][0:2]]]))
+        if match_format=='S':
+            del names_IR[5]
+            del names_IR[0]
+            names_IR[2], names_IR[3] = names_IR[3], names_IR[2]
+        if match_format=='D':
+            del names_IR[11]
+            del names_IR[8]
+            del names_IR[3]
+            del names_IR[0]
+            names_IR[4], names_IR[5], names_IR[6], names_IR[7] = names_IR[5], names_IR[4], names_IR[7], names_IR[6]
+        
+        for x in ['Team1_P1','Team1_P2','Team2_P1','Team2_P2']:
+            for index,y in enumerate(names_IR):
+                if match[x]==y:
+                    match[x+'_IR'] = names_IR[index+1].replace('(','').replace(')','')
+        
+        if match_format=="S":
+            try:
+                match['Team1_Avg_IR'] = float(match['Team1_P1_IR'])
+                match['Team2_Avg_IR'] = float(match['Team2_P1_IR'])
+                match['Delta_Team_IR'] = match['Team1_Avg_IR'] - match['Team2_Avg_IR']    
+            except:
+                pass
+        if match_format=="D":
+            try:
+                match['Team1_Avg_IR'] = statistics.mean([float(match['Team1_P1_IR']), float(match['Team1_P2_IR'])])
+                match['Team2_Avg_IR'] = statistics.mean([float(match['Team2_P1_IR']), float(match['Team2_P2_IR'])])
+                match['Delta_Team_IR'] = match['Team1_Avg_IR'] - match['Team2_Avg_IR']    
+            except:
+                pass
+    except:
+        pass
     return(match)      
 
 
