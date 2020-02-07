@@ -118,9 +118,9 @@ def main():
         player = get(player_year_url)
         player_year_html = BeautifulSoup(player.text, "html.parser")
         
-        tds = player_html.findAll('td')
-        output_name = tds[2].text.split("(")[0].strip().replace(" ", "_") + ".tsv"
-        print(output_name)
+        tds = player_year_html.findAll('td')
+        year = re.search(r'year=(\d+)', player_year_url)[1]
+        output_name = tds[2].text.split("(")[0].strip().replace(" ", "_") + "_" + str(year) + ".tsv"
 
         db = get_player_year_matches(player_year_url, match_variables, db)
 
@@ -129,7 +129,10 @@ def main():
 
         raw_html = simple_get(player_year_url)
         html = BeautifulSoup(raw_html, 'html.parser')
-
+        
+        tds = html.findAll('td')
+        output_name = tds[2].text.split("(")[0].strip().replace(" ", "_") + "_" + match_date.replace("/", "-") + ".tsv"
+        
         match_div = html.findAll('div', {'class':'container496'})
         for match_html in match_div:
             match_list = match_html.text.rstrip().split('\n')
@@ -138,23 +141,37 @@ def main():
             
             if match_list[0]==match_date:
                 if len(match_list)==10:
-                    match = get_match(html, match_html, match_variables, 'S')
+                    try:
+                        match = get_match(html, match_html, match_variables, 'S')
+                    except:
+                        print("Match failed")
+                        pass
                 elif len(match_list)==11:
-                    match = get_match(html, match_html, match_variables, 'D')
-        
-                if check_dups(match,db)==False:
-                    db[len(db)+1] = match
+                    try:
+                        match = get_match(html, match_html, match_variables, 'D')
+                    except:
+                        print("Match failed")
+                        pass
+                try:
+                    if check_dups(match,db)==False:
+                        db[len(db)+1] = match
+                except:
+                    pass
 
-    print(str(len(db)) + " match(e)s in database")
-        
+    print(str(len(db)) + " match(es) in database")
+    
     #Write output file
-    with open("match_db.tsv", "w") as f:
-        print('\t'.join(match_variables), file = f)
-        for k,v in db.items():
-            vals=list(db[k].values())
-            vals = ['None' if v is None else v for v in vals]
-            vals = [str(x) for x in vals]
-            print('\t'.join(vals), file = f)
+    if len(db)>0:
+        with open(output_name, "w") as f:
+            print('\t'.join(match_variables), file = f)
+            for k,v in db.items():
+                vals=list(db[k].values())
+                vals = ['None' if v is None else v for v in vals]
+                vals = [str(x) for x in vals]
+                print('\t'.join(vals), file = f)
+        print("Output written to: " + output_name)
+    else:
+        print("No matches written to file")
 
 def simple_get(url):
     """
@@ -206,18 +223,28 @@ def get_player_year_matches(url, match_variables, db):
         match_list = [x for x in match_list if x]
    
         if len(match_list)==10:
-            match = get_match(html, match_html, match_variables, 'S')
+            try:
+                match = get_match(html, match_html, match_variables, 'S')
+            except:
+                print("Match failed")
+                pass
         elif len(match_list)==11:
-            match = get_match(html, match_html, match_variables, 'D')
-        
-        if check_dups(match,db)==False:
-            db[len(db)+1] = match
-    
+            try:
+                match = get_match(html, match_html, match_variables, 'D')
+            except:
+                print("Match failed")
+                pass
+        try:
+            if check_dups(match,db)==False:
+                db[len(db)+1] = match
+        except:
+            pass
+
     return(db)
 
 def get_match(html, match_html, match_variables, match_format):
     match = dict.fromkeys(match_variables)
-    
+   
     #Parse match data
     match_list = match_html.text.rstrip().split('\n')
     match_list = (x.rstrip() for x in match_list)
