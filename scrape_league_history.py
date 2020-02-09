@@ -27,6 +27,8 @@ def main():
 
     run=""
     db={}
+    fails = []
+    dups = []
     if args.l:
         run="league"
     if args.t:
@@ -139,26 +141,33 @@ def main():
             match_list = (x.rstrip() for x in match_list)
             match_list = [x for x in match_list if x]
             
+            match={}
+
             if match_list[0]==match_date:
                 if len(match_list)==10:
                     try:
                         match = get_match(html, match_html, match_variables, 'S')
                     except:
                         print("Match failed")
+                        fails.append(match_list)
+                        fails.append(url)
                         pass
                 elif len(match_list)==11:
                     try:
                         match = get_match(html, match_html, match_variables, 'D')
                     except:
                         print("Match failed")
+                        fails.append(match_list)
+                        fails.append(url)
                         pass
-                try:
-                    if check_dups(match,db)==False:
-                        db[len(db)+1] = match
-                except:
-                    pass
+                if check_dups(match,db)==False:
+                    db[len(db)+1] = match
+                else:
+                    print("Duplicate match found")
+                    dups.append(match_list)
+                    dups.append(player_year_url)
 
-    print(str(len(db)) + " match(es) in database")
+    print("\n" + str(len(db)) + " match(es) in database")
     
     #Write output file
     if len(db)>0:
@@ -172,6 +181,25 @@ def main():
         print("Output written to: " + output_name)
     else:
         print("No matches written to file")
+
+    if len(fails)>0:
+        fail_count = int(len(fails)/2)
+        print("Failed match count: " + str(fail_count))
+        with open("fails.tsv", "w") as f:
+            for item in fails:
+                print(item, file=f)
+    else:
+        print("No failed matches")
+    
+    if len(dups)>0:
+        dup_count = int(len(dups)/2)
+        print("Duplicate match count: " + str(dup_count))
+        with open("dups.tsv", "w") as f:
+            for item in dups:
+                print(item, file=f)
+    else:
+        print("No duplicates found")
+
 
 def simple_get(url):
     """
@@ -244,7 +272,7 @@ def get_player_year_matches(url, match_variables, db):
 
 def get_match(html, match_html, match_variables, match_format):
     match = dict.fromkeys(match_variables)
-   
+    
     #Parse match data
     match_list = match_html.text.rstrip().split('\n')
     match_list = (x.rstrip() for x in match_list)
@@ -261,7 +289,7 @@ def get_match(html, match_html, match_variables, match_format):
     match['League'] = match_list[2]
     
     #Get team and player names
-    match = get_team_player(name_links, match_list, match_format, match)
+    match = get_team_player(match_html, name_links, match_list, match_format, match)
 
     #Get score
     match = get_score(match_list, match, match_format)
@@ -340,41 +368,31 @@ def get_match_MR(match_html, match_list, match_format, match):
             pass
     return(match)
 
-def get_team_player(name_links, match_list, match_format, match):
+def get_team_player(match_html, name_links, match_list, match_format, match):
+    names = re.findall(r'playername=([^&]+)', str(match_html))
+    
     #Winners assigned to team 1 regardless of root player
     if match_list[4]=="W":
         #Get team names
         match['Team1'] = match_list[3]
         match['Team2'] = match_list[5]
         match['Win_Team'] = match_list[3]
-
-        #Get player names
+        
         match['Team1_P1'] = name_links[1].text.strip()
-        if ("(" in match_list[6] or "(" in match_list[7]):
-            if match_format=="S":
-                if match_list[7]=="Default":
-                    match['Team2_P1']="Default"
-                else:
-                    match['Team2_P1'] = re.match(r'.*(?=\s\()', match_list[7])[0]
-            if match_format=="D":
-                if match_list[8]=="Default":
-                    match['Team2_P1']="Default"
-                    match['Team2_P2']="Default"
-                else:
-                    match['Team1_P2'] = re.split('\(|\)',match_list[6])[0].strip()
-                    match['Team2_P1'] = re.split('\(|\)',match_list[8])[0].strip()
-                    match['Team2_P2'] = re.split('\(|\)',match_list[8])[2].strip()
-        else:
-            if match_format=="S":
-                match['Team2_P1'] =  match_list[7].strip()
-            if match_format=="D":
-                if match_list[8]=="Default":
-                    match['Team2_P1']="Default"
-                    match['Team2_P2']="Default"
-                else:
-                    match['Team1_P2'] = match_list[6].strip()
-                    match['Team2_P1'] = re.split('(.*[a-z])([A-Z].*)',match_list[8])[1].strip()
-                    match['Team2_P2'] = re.split('(.*[a-z])([A-Z].*)',match_list[8])[2].strip()
+        if match_format=="S":
+            if match_list[7]=="Default":
+                match['Team2_P1'] = "Default"
+            else:
+                match['Team2_P1'] = names[0]
+        if match_format=="D":
+            if match_list[8]=="Default":
+                match['Team2_P1'] = "Default"
+                match['Team2_P2']="Default"
+            else:
+                match['Team1_P2'] = names[0]
+                match['Team2_P1'] = names[1]
+                match['Team2_P2'] = names[2]
+
     if match_list[4]=="L":
         #Get team names
         match['Team1'] = match_list[5]
@@ -382,21 +400,13 @@ def get_team_player(name_links, match_list, match_format, match):
         match['Win_Team'] = match_list[5]
    
         match['Team2_P1'] = name_links[1].text.strip()
-        #Get player names
-        if ("(" in match_list[6] or "(" in match_list[7]):
-            if match_format=="S":
-                match['Team1_P1'] = re.match(r'.*(?=\s\()', match_list[7])[0]
-            if match_format=="D":
-                match['Team2_P2'] = re.match(r'.*(?=\s\()', match_list[6])[0].strip()
-                match['Team1_P1'] = re.split('\(|\)',match_list[8])[0].strip()
-                match['Team1_P2'] = re.split('\(|\)',match_list[8])[2].strip()
-        else:
-            if match_format=="S":
-                match['Team1_P1'] = match_list[7].strip() 
-            if match_format=="D":
-                match['Team2_P2'] = match_list[6].strip()
-                match['Team1_P1'] = re.split('(.*[a-z])([A-Z].*)',match_list[8])[1].strip()
-                match['Team1_P2'] = re.split('(.*[a-z])([A-Z].*)',match_list[8])[2].strip()
+        if match_format=="S":
+            match['Team1_P1'] = names[0]
+        if match_format=="D":
+            match['Team2_P2'] = names[0]
+            match['Team1_P1'] = names[1]
+            match['Team1_P2'] = names[2]
+    
     return(match)
 
 def get_score(match_list, match, match_format):
