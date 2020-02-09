@@ -421,7 +421,7 @@ def get_score(match_list, match, match_format):
         score1 += int(set_score.split('-')[0])
         score2 += int(set_score.split('-')[1])
     
-    if len(sets)==2:
+    if len(sets)<=2:
         match['Team1_Games'] = max(score1, score2)
         match['Team2_Games'] = min(score1, score2)
     if len(sets)==3:   
