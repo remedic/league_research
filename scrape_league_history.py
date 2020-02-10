@@ -433,7 +433,7 @@ def get_score(match_list, match, match_format):
             match['Team1_Games'] = score2
             match['Team2_Games'] = score1
         
-    match['Delta_Pct_Games'] = round(abs((score1/(score1+score2))-(score2/(score1+score2))), 4)
+    match['Delta_Pct_Games']=(match['Team1_Games']/(match['Team1_Games']+ match['Team2_Games']))-(match['Team2_Games']/(match['Team1_Games']+ match['Team2_Games']))
 
     return(match)
 
