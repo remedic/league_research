@@ -39,15 +39,15 @@ def main():
             'Delta_Team_IR', 'Delta_Team_MR']
     
     if args.l:
-        db = get_league(url, match_variables, db)
+        db, output_name = get_league(url, match_variables, db)
     if args.t:
         run="team"
     if args.p:
-        run="player"
+        db, output_name = get_player(url, match_variables, db)
     if args.y:
-        db = get_player_year(url, match_variables, db)
+        db, output_name = get_player_year(url, match_variables, db)
     if args.m:
-        db = get_player_year(url, match_variables, db, args.m)
+        db, output_name = get_player_year(url, match_variables, db, args.m)
 
     print("\n" + str(len(db)) + " match(es) in database")
     
@@ -109,7 +109,7 @@ def get_league(url, match_variables, db):
                             year_link = year_link['href'].replace('<','&lt')
                             player_year_url = "https://www.tennisrecord.com" + year_link
                             db = get_player_year_matches(player_year_url, match_variables, db)
-
+    return(db, output_name)
 
     if run=="team":
         team_url=url
@@ -133,37 +133,36 @@ def get_league(url, match_variables, db):
                             player_year_url = "https://www.tennisrecord.com" + year_link
                             db = get_player_year_matches(player_year_url, match_variables, db)
     
-    if run=="player":
-        player_url = url
-        player = get(player_url)
-        player_html = BeautifulSoup(player.text, "html.parser")
+def get_player(url, match_variables, db, match_date=None):
+    player = get(url)
+    player_html = BeautifulSoup(player.text, "html.parser")
         
-        tds = player_html.findAll('td')
-        output_name = tds[2].text.split("(")[0].strip().replace(" ", "_") + ".tsv"
+    tds = player_html.findAll('td')
+    output_name = tds[2].text.split("(")[0].strip().replace(" ", "_") + ".tsv"
 
-        year_links = player_html.findAll('a', {'class':'link'})
-        for year_link in year_links:
-            if ("matchhistory" in year_link['href'] and "mt=" not in year_link['href'] and "Current Match History" not in year_link.text):
-                year_link = year_link['href'].replace('<','&lt')
-                player_year_url = "https://www.tennisrecord.com" + year_link
-                db = get_player_year_matches(player_year_url, match_variables, db)
+    year_links = player_html.findAll('a', {'class':'link'})
+    for year_link in year_links:
+        if ("matchhistory" in year_link['href'] and "mt=" not in year_link['href'] and "Current Match History" not in year_link.text):
+            year_link = year_link['href'].replace('<','&lt')
+            player_year_url = "https://www.tennisrecord.com" + year_link
+            db = get_player_year_matches(url, match_variables, db)
 
+    return(db, output_name)
 
 def get_player_year(url, match_variables, db, match_date=None):
-    print(url)
     player = get(url)
     player_year_html = BeautifulSoup(player.text, "html.parser")
     tds = player_year_html.findAll('td')
-    year = re.search(r'year=(\d+)', player_year_url)[1]
+    year = re.search(r'year=(\d+)', url)[1]
     
     if match_date:
         output_name = tds[2].text.split("(")[0].strip().replace(" ", "_") + "_" + match_date.replace("/", "-") + ".tsv"
     else:
         output_name = tds[2].text.split("(")[0].strip().replace(" ", "_") + "_" + str(year) + ".tsv"
     
-    db = get_player_year_matches(player_year_url, match_variables, db, match_date)
+    db = get_player_year_matches(url, match_variables, db, match_date)
 
-    return(db)
+    return(db, output_name)
 
 def simple_get(url):
     """
@@ -201,7 +200,7 @@ def log_error(e):
     """
     print(e)
 
-def get_player_year_matches(url, match_variables, db, match_date):
+def get_player_year_matches(url, match_variables, db, match_date=None):
     """
     Pull match variables for a player year
     """
@@ -216,7 +215,7 @@ def get_player_year_matches(url, match_variables, db, match_date):
         match_list = [x for x in match_list if x]
   
         #if match_date specified, only pull that match; otherwise pull all matches for year
-        if (match_list[0]==match_date or not match__date):
+        if (match_list[0]==match_date or not match_date):
             if len(match_list)==10:
                 try:
                     match = get_match(html, match_html, match_variables, 'S')
