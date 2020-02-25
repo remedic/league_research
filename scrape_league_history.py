@@ -11,10 +11,12 @@ import statistics
 from html import escape
 import argparse
 import sys
+from hashlib import sha256
 
 def main():
     parser = argparse.ArgumentParser()
 
+    #TODO add help menu for options
     parser.add_argument('-l', action="store_true")
     parser.add_argument('-t', action="store_true")
     parser.add_argument('-p', action="store_true")
@@ -25,59 +27,90 @@ def main():
     
     url = args.url
 
-    run=""
     db={}
     fails = []
     dups = []
-    if args.l:
-        run="league"
-    if args.t:
-        run="team"
-    if args.p:
-        run="player"
-    if args.y:
-        run="player_year"
-    if args.m:
-        run="match"
-        match_date = args.m
-
-    match_variables = ['Match_Date', 'League', 
+    match_variables = ['PK', 'Match_Date', 'League', 
             'Team1', 'Team2', 'Court', 
             'Team1_P1', 'Team1_P2', 'Team2_P1', 'Team2_P2',
             'Win_Team', 'Team1_Games', 'Team2_Games', 'Delta_Pct_Games',
             'Team1_P1_IR', 'Team1_P2_IR', 'Team2_P1_IR', 'Team2_P2_IR', 'Team1_Avg_IR', 'Team2_Avg_IR',
             'Team1_P1_MR', 'Team1_P2_MR', 'Team2_P1_MR', 'Team2_P2_MR', 'Team1_Avg_MR', 'Team2_Avg_MR',
             'Delta_Team_IR', 'Delta_Team_MR']
-
-    if run=='league':
-        league_url=url
-        league = get(league_url)
-        league_html = BeautifulSoup(league.text, "html.parser")
     
-        tds = league_html.findAll('td')
-        output_name = tds[2].text.replace(" ", "_") + ".tsv"
+    if args.l:
+        db = get_league(url, match_variables, db)
+    if args.t:
+        run="team"
+    if args.p:
+        run="player"
+    if args.y:
+        db = get_player_year(url, match_variables, db)
+    if args.m:
+        db = get_player_year(url, match_variables, db, args.m)
 
-        #For team in league
-        team_links = league_html.findAll('a', {'class':'link'})
-        for link in team_links:
-            if "teamprofile" in link['href']:
-                team_url = "https://www.tennisrecord.com" + link['href']
-                team = get(team_url)
-                team_html = BeautifulSoup(team.text, "html.parser")
-                #For player on team
-                player_links = team_html.findAll('a', {'class':'link'})
-                for player_link in player_links:
-                    if "playername" in player_link['href']:
-                        player_url = "https://www.tennisrecord.com" + player_link['href']
-                        player = get(player_url)
-                        player_html = BeautifulSoup(player.text, "html.parser")
-                        year_links = player_html.findAll('a', {'class':'link'})
-                        for year_link in year_links:
-                            if ("matchhistory" in year_link['href'] and "mt=" not in year_link['href'] and "Current Match History" not in year_link.text):
-                                year_link = year_link['href'].replace('<','&lt')
-                                player_year_url = "https://www.tennisrecord.com" + year_link
-                                db = get_player_year_matches(player_year_url, match_variables, db)
+    print("\n" + str(len(db)) + " match(es) in database")
     
+    #Write output file
+    if len(db)>0:
+        with open(output_name, "w") as f:
+            print('\t'.join(match_variables), file = f)
+            for k,v in db.items():
+                vals=list(db[k].values())
+                vals = ['None' if v is None else v for v in vals]
+                vals = [str(x) for x in vals]
+                print('\t'.join(vals), file = f)
+        print("Output written to: " + output_name)
+    else:
+        print("No matches written to file")
+
+    if len(fails)>0:
+        fail_count = int(len(fails)/2)
+        print("Failed match count: " + str(fail_count))
+        with open("fails.tsv", "w") as f:
+            for item in fails:
+                print(item, file=f)
+    else:
+        print("No failed matches")
+    
+    if len(dups)>0:
+        dup_count = int(len(dups)/2)
+        print("Duplicate match count: " + str(dup_count))
+        with open("dups.tsv", "w") as f:
+            for item in dups:
+                print(item, file=f)
+    else:
+        print("No duplicates found")
+
+def get_league(url, match_variables, db):
+    league = get(url)
+    league_html = BeautifulSoup(league.text, "html.parser")
+    
+    tds = league_html.findAll('td')
+    output_name = tds[2].text.replace(" ", "_") + ".tsv"
+
+    #For team in league
+    team_links = league_html.findAll('a', {'class':'link'})
+    for link in team_links:
+        if "teamprofile" in link['href']:
+            team_url = "https://www.tennisrecord.com" + link['href']
+            team = get(team_url)
+            team_html = BeautifulSoup(team.text, "html.parser")
+            #For player on team
+            player_links = team_html.findAll('a', {'class':'link'})
+            for player_link in player_links:
+                if "playername" in player_link['href']:
+                    player_url = "https://www.tennisrecord.com" + player_link['href']
+                    player = get(player_url)
+                    player_html = BeautifulSoup(player.text, "html.parser")
+                    year_links = player_html.findAll('a', {'class':'link'})
+                    for year_link in year_links:
+                        if ("matchhistory" in year_link['href'] and "mt=" not in year_link['href'] and "Current Match History" not in year_link.text):
+                            year_link = year_link['href'].replace('<','&lt')
+                            player_year_url = "https://www.tennisrecord.com" + year_link
+                            db = get_player_year_matches(player_year_url, match_variables, db)
+
+
     if run=="team":
         team_url=url
         team = get(team_url)
@@ -114,92 +147,23 @@ def main():
                 year_link = year_link['href'].replace('<','&lt')
                 player_year_url = "https://www.tennisrecord.com" + year_link
                 db = get_player_year_matches(player_year_url, match_variables, db)
+
+
+def get_player_year(url, match_variables, db, match_date=None):
+    print(url)
+    player = get(url)
+    player_year_html = BeautifulSoup(player.text, "html.parser")
+    tds = player_year_html.findAll('td')
+    year = re.search(r'year=(\d+)', player_year_url)[1]
     
-    if run=="player_year":
-        player_year_url = url
-        player = get(player_year_url)
-        player_year_html = BeautifulSoup(player.text, "html.parser")
-        
-        tds = player_year_html.findAll('td')
-        year = re.search(r'year=(\d+)', player_year_url)[1]
-        output_name = tds[2].text.split("(")[0].strip().replace(" ", "_") + "_" + str(year) + ".tsv"
-
-        db = get_player_year_matches(player_year_url, match_variables, db)
-
-    if run=="match":
-        player_year_url = url
-
-        raw_html = simple_get(player_year_url)
-        html = BeautifulSoup(raw_html, 'html.parser')
-        
-        tds = html.findAll('td')
+    if match_date:
         output_name = tds[2].text.split("(")[0].strip().replace(" ", "_") + "_" + match_date.replace("/", "-") + ".tsv"
-        
-        match_div = html.findAll('div', {'class':'container496'})
-        for match_html in match_div:
-            match_list = match_html.text.rstrip().split('\n')
-            match_list = (x.rstrip() for x in match_list)
-            match_list = [x for x in match_list if x]
-            
-            match={}
-
-            if match_list[0]==match_date:
-                if len(match_list)==10:
-                    try:
-                        match = get_match(html, match_html, match_variables, 'S')
-                    except:
-                        print("Match failed")
-                        fails.append(match_list)
-                        fails.append(url)
-                        pass
-                elif len(match_list)==11:
-                    try:
-                        match = get_match(html, match_html, match_variables, 'D')
-                    except:
-                        print("Match failed")
-                        fails.append(match_list)
-                        fails.append(url)
-                        pass
-                if check_dups(match,db)==False:
-                    db[len(db)+1] = match
-                else:
-                    print("Duplicate match found")
-                    dups.append(match_list)
-                    dups.append(player_year_url)
-
-    print("\n" + str(len(db)) + " match(es) in database")
+    else:
+        output_name = tds[2].text.split("(")[0].strip().replace(" ", "_") + "_" + str(year) + ".tsv"
     
-    #Write output file
-    if len(db)>0:
-        with open(output_name, "w") as f:
-            print('\t'.join(match_variables), file = f)
-            for k,v in db.items():
-                vals=list(db[k].values())
-                vals = ['None' if v is None else v for v in vals]
-                vals = [str(x) for x in vals]
-                print('\t'.join(vals), file = f)
-        print("Output written to: " + output_name)
-    else:
-        print("No matches written to file")
+    db = get_player_year_matches(player_year_url, match_variables, db, match_date)
 
-    if len(fails)>0:
-        fail_count = int(len(fails)/2)
-        print("Failed match count: " + str(fail_count))
-        with open("fails.tsv", "w") as f:
-            for item in fails:
-                print(item, file=f)
-    else:
-        print("No failed matches")
-    
-    if len(dups)>0:
-        dup_count = int(len(dups)/2)
-        print("Duplicate match count: " + str(dup_count))
-        with open("dups.tsv", "w") as f:
-            for item in dups:
-                print(item, file=f)
-    else:
-        print("No duplicates found")
-
+    return(db)
 
 def simple_get(url):
     """
@@ -237,7 +201,7 @@ def log_error(e):
     """
     print(e)
 
-def get_player_year_matches(url, match_variables, db):
+def get_player_year_matches(url, match_variables, db, match_date):
     """
     Pull match variables for a player year
     """
@@ -245,28 +209,31 @@ def get_player_year_matches(url, match_variables, db):
     html = BeautifulSoup(raw_html, 'html.parser')
 
     match_div = html.findAll('div', {'class':'container496'})
+    
     for match_html in match_div:
         match_list = match_html.text.rstrip().split('\n')
         match_list = (x.rstrip() for x in match_list)
         match_list = [x for x in match_list if x]
-   
-        if len(match_list)==10:
+  
+        #if match_date specified, only pull that match; otherwise pull all matches for year
+        if (match_list[0]==match_date or not match__date):
+            if len(match_list)==10:
+                try:
+                    match = get_match(html, match_html, match_variables, 'S')
+                except:
+                    print("Match failed")
+                    pass
+            elif len(match_list)==11:
+                try:
+                    match = get_match(html, match_html, match_variables, 'D')
+                except:
+                    print("Match failed")
+                    pass
             try:
-                match = get_match(html, match_html, match_variables, 'S')
+                if check_dups(match,db)==False:
+                    db[len(db)+1] = match
             except:
-                print("Match failed")
                 pass
-        elif len(match_list)==11:
-            try:
-                match = get_match(html, match_html, match_variables, 'D')
-            except:
-                print("Match failed")
-                pass
-        try:
-            if check_dups(match,db)==False:
-                db[len(db)+1] = match
-        except:
-            pass
 
     return(db)
 
@@ -290,6 +257,12 @@ def get_match(html, match_html, match_variables, match_format):
     
     #Get team and player names
     match = get_team_player(match_html, name_links, match_list, match_format, match)
+
+    #Get primary key based on match date, court, league, teams, and players
+    pkey = get_pk(match)
+    match['PK']=pkey
+    #Check if match is in db
+
 
     #Get score
     match = get_score(match_list, match, match_format)
@@ -497,7 +470,19 @@ def get_match_IR(match_url, match, match_format):
         pass
     return(match)      
 
-
+def get_pk(match):
+    #Create primary key to identify duplicates
+    pkey = [match['Match_Date'], 
+            match['Court'],
+            match['League'],
+            match['Team1'],
+            match['Team2'],
+            match['Team1_P1'],
+            match['Team1_P2'],
+            match['Team2_P1'],
+            match['Team2_P2']]
+    pkey = sha256(repr(sorted(pkey)).encode('utf-8')).hexdigest()
+    return(pkey)
 
 def check_dups(match, db):
     """
